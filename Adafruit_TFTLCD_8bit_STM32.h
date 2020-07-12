@@ -6,30 +6,33 @@
 
 #include <Adafruit_GFX.h>
 
-#include <libmaple/gpio.h>
-
 /*****************************************************************************/
 // Define pins and Output Data Registers
 /*****************************************************************************/
 // Data port
-#define TFT_DATA_PORT	GPIOB
+#define TFT_DATA_PORT	GPIOD
 // Data bits/pins
 #define TFT_DATA_SHIFT 0 // take the lower bits/pins 0..7
 //#define TFT_DATA_SHIFT 8 // take the higher bits/pins 8..15
 
 //Control pins |RD |WR |RS |CS |RST|
-#define TFT_CNTRL_PORT	GPIOA
-#define TFT_RD			PA0
-#define TFT_WR			PA1
-#define TFT_RS			PA2
-#define TFT_CS			PA3
+#define TFT_CNTRL_PORT	GPIOC
+#define TFT_RD			PC0
+#define TFT_WR			PC1
+#define TFT_RS			PC2
+#define TFT_CS			PC3
 
-#define TFT_RD_MASK		BIT0 // digitalPinToBitMask(TFT_RD) // 
-#define TFT_WR_MASK		BIT1 // digitalPinToBitMask(TFT_WR) // 
-#define TFT_RS_MASK		BIT2 // digitalPinToBitMask(TFT_RS) // 
-#define TFT_CS_MASK		BIT3 // digitalPinToBitMask(TFT_CS) // 
+#define TFT_RD_ON_MASK		1 // digitalPinToBitMask(TFT_RD) // 
+#define TFT_WR_ON_MASK		1 << 1 // digitalPinToBitMask(TFT_WR) // 
+#define TFT_RS_ON_MASK		1 << 2 // digitalPinToBitMask(TFT_RS) // 
+#define TFT_CS_ON_MASK		1 << 3 // digitalPinToBitMask(TFT_CS) // 
 
-#define TFT_RST			PB10
+#define TFT_RD_OFF_MASK        (TFT_RD_ON_MASK << 16)
+#define TFT_WR_OFF_MASK        (TFT_WR_ON_MASK << 16)
+#define TFT_RS_OFF_MASK        (TFT_RS_ON_MASK << 16)
+#define TFT_CS_OFF_MASK        (TFT_CS_ON_MASK << 16)
+
+#define TFT_RST			PE9
 
 #define SLOW_WRITE 0   // set to 1 for legacy slow write (using individual digitalWrite()s
 
@@ -43,8 +46,8 @@
 #define ID_UNKNOWN 0xFF
 
 /*****************************************************************************/
-#define TFTWIDTH   240
-#define TFTHEIGHT  320
+#define TFTWIDTH   320
+#define TFTHEIGHT  480
 
 // Initialization command tables for different LCD controllers
 #define TFTLCD_DELAY 0xFF
@@ -78,29 +81,28 @@
 	#define CS_ACTIVE_CD_COMMAND	{ CS_ACTIVE; CD_COMMAND; }
 #else
 	// use fast bit toggling, very fast speed!
-extern gpio_reg_map * cntrlRegs;
-	#define WR_ACTIVE				{ cntrlRegs->BRR  = TFT_WR_MASK; }
-	#define WR_IDLE					{ cntrlRegs->BSRR = TFT_WR_MASK; }
-	#define CD_COMMAND				{ cntrlRegs->BRR  = TFT_RS_MASK; }
-	#define CD_DATA					{ cntrlRegs->BSRR = TFT_RS_MASK; }
-	#define CS_ACTIVE				{ cntrlRegs->BRR  = TFT_CS_MASK; }
-	#define CS_IDLE					{ cntrlRegs->BSRR = TFT_CS_MASK; }
-	#define CS_ACTIVE_CD_COMMAND	{ cntrlRegs->BRR  = (TFT_CS_MASK|TFT_RS_MASK); }
+	#define WR_ACTIVE				{ TFT_CNTRL_PORT->BSRR = TFT_WR_ON_MASK; }
+	#define WR_IDLE					{ TFT_CNTRL_PORT->BSRR = TFT_WR_OFF_MASK; }
+	#define CD_COMMAND				{ TFT_CNTRL_PORT->BSRR = TFT_RS_ON_MASK; }
+	#define CD_DATA					{ TFT_CNTRL_PORT->BSRR = TFT_RS_OFF_MASK; }
+	#define CS_ACTIVE				{ TFT_CNTRL_PORT->BSRR = TFT_CS_ON_MASK; }
+	#define CS_IDLE					{ TFT_CNTRL_PORT->BSRR = TFT_CS_OFF_MASK; }
+	#define CS_ACTIVE_CD_COMMAND	{ TFT_CNTRL_PORT->BSRR  = (TFT_CS_ON_MASK | TFT_RS_ON_MASK); }
 #endif
 
 #define WR_STROBE { WR_ACTIVE; WR_IDLE; }
 
-extern uint8_t read8_(void);
-#define read8(x) ( x = read8_() )
+//extern uint8_t read8_(void);
+//#define read8(x) ( x = read8_() )
 
-extern gpio_reg_map * dataRegs;
+//extern GPIO * dataRegs;
 
 #if (TFT_DATA_SHIFT==0)
   //#warning "Using lower data nibble..."
 	// set the pins to input mode
-	#define setReadDir() ( dataRegs->CRL = 0x88888888 )	// set the lower 8 bits as input
+	#define setReadDir() ( TFT_DATA_PORT->MODER |= 0x55555555 )	// set the lower 8 bits as input
 	// set the pins to output mode
-	#define setWriteDir() ( dataRegs->CRL = 0x33333333 )	// set the lower 8 bits as output
+	#define setWriteDir() ( TFT_DATA_PORT->MODER |= 0x55555555 )	// set the lower 8 bits as output
 
     // set pins to output the 8 bit value
     #if SLOW_WRITE
@@ -115,15 +117,17 @@ extern gpio_reg_map * dataRegs;
     					digitalWrite(PB7, (c&BIT7)?HIGH:LOW);
     					WR_STROBE; }
     #else
-      #define write8(c) { dataRegs->BSRR = (uint32_t)(0x00FF0000 + ((c)&0xFF)); WR_STROBE; }
+      #define write8(c) { TFT_DATA_PORT->ODR &= (uint32_t)(((c)&0xFF)); WR_STROBE; }
+      #define myread8() (TFT_DATA_PORT->IDR & (uint32_t)(0xFF))
+
       // inline void write8(uint8_t d) { dataRegs->BSRR = (uint32_t)(0x00FF0000 + d); WR_STROBE; };
     #endif
 #elif (TFT_DATA_SHIFT==8)
   #warning "Using high data nibble..."
 	// set the pins to input mode
-	#define setReadDir() ( dataRegs->CRH = 0x88888888 )	// set the upper 8 bits as input
+	#define setReadDir() ( TFT_DATA_PORT->CRH = 0x88888888 )	// set the upper 8 bits as input
 	// set the pins to output mode
-	#define setWriteDir() ( dataRegs->CRH = 0x33333333 )	// set the lower 8 bits as output
+	#define setWriteDir() ( TFT_DATA_PORT->CRH = 0x33333333 )	// set the lower 8 bits as output
 
     // set pins to output the 8 bit value
     #if SLOW_WRITE
@@ -138,7 +142,7 @@ extern gpio_reg_map * dataRegs;
     					digitalWrite(PB15, (c&BIT7)?HIGH:LOW);
     					WR_STROBE; }
     #else
-      #define write8(c) {  dataRegs->BSRR = (uint32_t)(0xFF000000 + (((c)&0xFF)<<TFT_DATA_SHIFT)); WR_STROBE; }
+      #define write8(c) { TFT_DATA_PORT ->BSRR = (uint32_t)(0xFF000000 + (((c)&0xFF)<<TFT_DATA_SHIFT)); WR_STROBE; }
       // inline void write8(uint8_t d) { dataRegs->BSRR = (uint32_t)(0x00FF0000 + d); WR_STROBE; };
     #endif
 #else

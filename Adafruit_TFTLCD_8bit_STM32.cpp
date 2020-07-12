@@ -8,9 +8,6 @@
 #include "hx8347g.h"
 #include "hx8357x.h"
 
-gpio_reg_map * cntrlRegs;
-gpio_reg_map * dataRegs;
-
 /*****************************************************************************/
 // Constructor
 /*****************************************************************************/
@@ -58,8 +55,6 @@ void Adafruit_TFTLCD_8bit_STM32::begin(uint16_t id)
 /*****************************************************************************/
 void Adafruit_TFTLCD_8bit_STM32::reset(void)
 {
-	cntrlRegs = TFT_CNTRL_PORT->regs;
-	dataRegs = TFT_DATA_PORT->regs;
 	//Set control lines as output
 	//cntrlRegs->CRL = (cntrlRegs->CRL & 0xFFFF0000) | 0x00003333;
 	pinMode(TFT_RD, OUTPUT);
@@ -455,11 +450,11 @@ void Adafruit_TFTLCD_8bit_STM32::setRotation(uint8_t x)
 }
 
 /*****************************************************************************/
-uint8_t read8_(void)
+uint8_t read8(void)
 {
   RD_ACTIVE;
   delayMicroseconds(10);
-  uint8_t temp = ( (dataRegs->IDR>>TFT_DATA_SHIFT) & 0x00FF);
+  uint8_t temp = myread8();
   delayMicroseconds(10);
   RD_IDLE;
   delayMicroseconds(10);
@@ -496,10 +491,10 @@ uint16_t Adafruit_TFTLCD_8bit_STM32::readPixel(int16_t x, int16_t y)
     writeCommand(0x22); // Read data from GRAM
     setReadDir();  // Set up LCD data port(s) for READ operations
     CD_DATA;
-    read8(r);      // First byte back is a dummy read
-    read8(r);
-    read8(g);
-    read8(b);
+    r = read8();      // First byte back is a dummy read
+    r = read8();
+    g = read8();
+    b = read8();
     setWriteDir(); // Restore LCD data port(s) to WRITE configuration
     CS_IDLE;
     return (((uint16_t)r & B11111000) << 8) |
@@ -554,16 +549,16 @@ uint32_t readReg32(uint8_t r)
   setReadDir();  // Set up LCD data port(s) for READ operations
   CD_DATA;
   delayMicroseconds(50);
-  read8(x);
+  x = read8();
   id = x;          // Do not merge or otherwise simplify
   id <<= 8;              // these lines.  It's an unfortunate
-  read8(x);
+  x = read8();
   id  |= x;        // shenanigans that are going on.
   id <<= 8;              // these lines.  It's an unfortunate
-  read8(x);
+  x = read8();
   id  |= x;        // shenanigans that are going on.
   id <<= 8;              // these lines.  It's an unfortunate
-  read8(x);
+  x = read8();
   id  |= x;        // shenanigans that are going on.
   CS_IDLE;
   setWriteDir();  // Restore LCD data port(s) to WRITE configuration
@@ -579,10 +574,10 @@ uint16_t readReg(uint8_t r)
   setReadDir();  // Set up LCD data port(s) for READ operations
   CD_DATA;
   delayMicroseconds(10);
-  read8(x);
+  x = read8();
   id = x;          // Do not merge or otherwise simplify
   id <<= 8;              // these lines.  It's an unfortunate
-  read8(x);
+  x = read8();
   id |= x;        // shenanigans that are going on.
   CS_IDLE;
   setWriteDir();  // Restore LCD data port(s) to WRITE configuration
